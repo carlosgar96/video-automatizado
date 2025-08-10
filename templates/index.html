@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Video Automatizado</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Generador de Videos Automatizados</h1>
+    <p>Ingresa tu guion y generaremos un video con imágenes, voz, efectos y transiciones usando recursos locales gratis.</p>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Configura tu Video</h2>
+      <div class="form-row">
+        <label for="script">Guion</label>
+        <textarea id="script" rows="10" placeholder="Pega aquí tu guion..."></textarea>
+      </div>
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="voice">Voz</label>
+          <select id="voice">
+            <option value="default">Predeterminada</option>
+            <option value="female">Femenina (si disponible)</option>
+            <option value="male">Masculina (si disponible)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="rate">Velocidad de voz (palabras/min)</label>
+          <input id="rate" type="number" min="100" max="250" step="10" value="180" />
+        </div>
+        <div class="form-row">
+          <label for="perSlide">Duración por imagen (seg)</label>
+          <input id="perSlide" type="number" min="1" max="10" step="0.5" value="2" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="generateBtn">Generar Video</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </section>
+
+    <section id="resultSection" class="card hidden">
+      <h2>Resultado</h2>
+      <video id="resultVideo" controls class="video-player"></video>
+      <div class="actions">
+        <a id="downloadLink" href="#" download>Descargar MP4</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Funciona con Flask, pyttsx3, Pillow y MoviePy — todos recursos locales gratuitos.</p>
+  </footer>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>
