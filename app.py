@@ -6,6 +6,9 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 from PIL import Image, ImageDraw, ImageFont
 import pyttsx3
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, vfx
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # App setup
 app = Flask(__name__)
@@ -96,6 +99,7 @@ def make_slide_image(text: str, size=(1280, 720)):
 
 
 def synth_tts_to_wav(text: str, wav_path: str, voice_preference: str = 'default', rate: int = 180):
+    logging.info("Synthesizing TTS to %s", wav_path)
     engine = pyttsx3.init()
     try:
         # Select voice by gender preference if possible
@@ -116,6 +120,10 @@ def synth_tts_to_wav(text: str, wav_path: str, voice_preference: str = 'default'
         engine.setProperty('rate', rate)
         engine.save_to_file(text, wav_path)
         engine.runAndWait()
+        logging.info("TTS synthesis completed: %s", wav_path)
+    except Exception:
+        logging.exception("Error during TTS synthesis")
+        raise
     finally:
         engine.stop()
 
@@ -133,40 +141,49 @@ def split_script_by_scenes(text: str, scenes: int):
 
 
 def build_video(slides_text, audio_path, out_path, per_slide_sec=2.0, size=(1280, 720)):
+    logging.info("Building video with %d slides", len(slides_text))
     clips = []
-    for t in slides_text:
-        img = make_slide_image(t, size=size)
-        fname = os.path.join(FRAMES_DIR, f"frame_{uuid.uuid4().hex}.png")
-        img.save(fname)
-        clip = ImageClip(fname, duration=per_slide_sec)
-        # gentle zoom effect
-        clip = clip.resize(lambda tt: 1.0 + 0.03 * (tt / per_slide_sec)).fx(vfx.fadein, 0.25).fx(vfx.fadeout, 0.25)
-        clips.append(clip)
+    audio = None
+    final = None
+    try:
+        for t in slides_text:
+            img = make_slide_image(t, size=size)
+            fname = os.path.join(FRAMES_DIR, f"frame_{uuid.uuid4().hex}.png")
+            img.save(fname)
+            clip = ImageClip(fname, duration=per_slide_sec)
+            # gentle zoom effect
+            clip = clip.resize(lambda tt: 1.0 + 0.03 * (tt / per_slide_sec)).fx(vfx.fadein, 0.25).fx(vfx.fadeout, 0.25)
+            clips.append(clip)
 
-    if not clips:
-        raise ValueError('No clips generated')
+        if not clips:
+            raise ValueError('No clips generated')
 
-    video = concatenate_videoclips(clips, method='compose')
-    audio = AudioFileClip(audio_path)
-
-    # Sync: trim or pad video to match audio duration
-    if video.duration < audio.duration:
-        last = clips[-1].set_duration(clips[-1].duration + (audio.duration - video.duration))
-        clips[-1] = last
         video = concatenate_videoclips(clips, method='compose')
-    else:
-        video = video.subclip(0, audio.duration)
+        audio = AudioFileClip(audio_path)
 
-    final = video.set_audio(audio)
+        # Sync: trim or pad video to match audio duration
+        if video.duration < audio.duration:
+            last = clips[-1].set_duration(clips[-1].duration + (audio.duration - video.duration))
+            clips[-1] = last
+            video = concatenate_videoclips(clips, method='compose')
+        else:
+            video = video.subclip(0, audio.duration)
 
-    # Export
-    final.write_videofile(out_path, fps=24, codec='libx264', audio_codec='aac', verbose=False, logger=None)
+        final = video.set_audio(audio)
 
-    # Close resources
-    audio.close()
-    for c in clips:
-        c.close()
-    final.close()
+        # Export
+        final.write_videofile(out_path, fps=24, codec='libx264', audio_codec='aac', verbose=False, logger=None)
+        logging.info("Video written to %s", out_path)
+    except Exception:
+        logging.exception("Error building video")
+        raise
+    finally:
+        if audio:
+            audio.close()
+        for c in clips:
+            c.close()
+        if final:
+            final.close()
 
 
 @app.route('/')
@@ -190,7 +207,7 @@ def api_generate():
     session_id = uuid.uuid4().hex[:8]
     audio_path = os.path.join(OUTPUT_DIR, f'audio_{ts}_{session_id}.wav')
     video_path = os.path.join(OUTPUT_DIR, f'video_{ts}_{session_id}.mp4')
-
+    logging.info("Session %s: generating video", session_id)
     try:
         # 1) TTS
         synth_tts_to_wav(script, audio_path, voice_preference=voice, rate=rate)
@@ -204,11 +221,12 @@ def api_generate():
         # 3) Split text and render video
         slides = split_script_by_scenes(script, scenes)
         build_video(slides, audio_path, video_path, per_slide_sec=per_slide)
-
         rel = os.path.basename(video_path)
+        logging.info("Session %s: video generation completed", session_id)
         return jsonify({'ok': True, 'video': f'/download/{rel}'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logging.exception("Session %s: error generating video", session_id)
+        return jsonify({'error': 'Error al generar el video.'}), 500
 
 
 @app.get('/download/<path:filename>')
